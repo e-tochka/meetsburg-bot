@@ -9,7 +9,6 @@ from database import db
 
 router = Router()
 
-# Определяем состояния для создания встречи
 class CreateMeet(StatesGroup):
     waiting_for_title = State()       # Ожидаем название встречи
     waiting_for_date = State()        # Ожидаем дату
@@ -81,7 +80,6 @@ async def process_meet_plan(message: Message, state: FSMContext):
         await back_to_menu(message, state)
         return
     
-    # Обрабатываем ввод плана
     if message.text.strip() == '-':
         plan = "Не указан"
         plan_text = "❌ не указан"
@@ -105,12 +103,10 @@ async def process_password_choice(message: Message, state: FSMContext):
         return
         
     if message.text == "🔓 Без пароля":
-        # Если без пароля - сразу переходим к подтверждению
         await state.update_data(password=None, password_text="🔓 без пароля")
         await show_confirmation(message, state)
         
     elif message.text == "🔐 С паролем":
-        # Если с паролем - запрашиваем ввод пароля
         await message.answer(
             "🔐 Введите пароль для встречи:",
             reply_markup=ReplyKeyboardMarkup(
@@ -142,10 +138,8 @@ async def process_password_input(message: Message, state: FSMContext):
     await show_confirmation(message, state)
 
 async def show_confirmation(message: Message, state: FSMContext):
-    # Получаем все сохраненные данные
     data = await state.get_data()
     
-    # Формируем итоговое сообщение для подтверждения
     meet_info = (
         "📋 <b>Проверьте данные встречи:</b>\n\n"
         f"📝 <b>Название:</b> {data['title']}\n"
@@ -166,10 +160,8 @@ async def process_confirmation(message: Message, state: FSMContext):
         return
         
     if message.text == "✅ Да, всё верно":
-        # Получаем данные из состояния
         data = await state.get_data()
         
-        # Сохраняем встречу в базу данных
         meet_id = await db.add_meet(
             user_id=message.from_user.id,
             title=data['title'],
@@ -207,7 +199,6 @@ async def process_confirmation(message: Message, state: FSMContext):
             reply_markup=get_confirmation_keyboard()
         )
 
-# Функция возврата в главное меню
 async def back_to_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
@@ -215,7 +206,6 @@ async def back_to_menu(message: Message, state: FSMContext):
         reply_markup=get_main_keyboard()
     )
 
-# Обработчик для кнопки "Назад к меню"
 @router.message(lambda message: message.text == "↩️ Назад к меню")
 async def back_to_menu_handler(message: Message, state: FSMContext):
     await back_to_menu(message, state)

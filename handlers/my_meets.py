@@ -9,7 +9,6 @@ router = Router()
 @router.message(Command("my_meets"))
 @router.message(lambda message: message.text == "📋 Мои встречи")
 async def cmd_my_meets(message: Message):
-    # Получаем встречи пользователя из базы данных
     meets = await db.get_user_meets(message.from_user.id)
     
     if not meets:
@@ -20,7 +19,6 @@ async def cmd_my_meets(message: Message):
         )
         return
     
-    # Формируем список встреч
     meets_text = "📋 <b>Ваши встречи:</b>\n\n"
     
     for meet in meets:
