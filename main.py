@@ -1,13 +1,15 @@
 import asyncio
 from aiogram import Bot, Dispatcher
-from aiogram.types import Message
-from aiogram.fsm.context import FSMContext
 from aiogram.fsm.storage.memory import MemoryStorage
 import json 
 import logging
+
+from database import db
+
 from handlers.start import router as start_router
-from handlers.meets import router as meets_router
-from keyboards import get_main_keyboard
+from handlers.newmeet import router as meets_router
+from handlers.qr import router as qr_router
+from handlers.my_meets import router as my_meets_router
 
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
@@ -28,14 +30,8 @@ async def main():
 
         dp.include_router(start_router)
         dp.include_router(meets_router)
-
-        @dp.message(lambda message: message.text in ["↩️ Назад к меню", "Главное меню"])
-        async def back_to_menu(message: Message, state: FSMContext):
-            await state.clear()
-            await message.answer(
-                "🏠 Главное меню:",
-                reply_markup=get_main_keyboard()
-            )
+        dp.include_router(my_meets_router)
+        dp.include_router(qr_router)
 
         logger.info("Бот запущен")
         await dp.start_polling(bot)

@@ -5,4 +5,6 @@
     "token": "<your-telegram-token>"
 }
 ```
+# Где найти?
+`@meetsburg_bot` или по QR:
 ![alt text](image.png)

@@ -5,6 +5,7 @@ from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
 from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
 from keyboards import get_main_keyboard, get_password_choice_keyboard, get_confirmation_keyboard
+from database import db
 
 router = Router()
 
@@ -31,7 +32,6 @@ async def cmd_newmeet(message: Message, state: FSMContext):
 
 @router.message(CreateMeet.waiting_for_title)
 async def process_meet_title(message: Message, state: FSMContext):
-    # Проверяем, не нажал ли пользователь кнопку главного меню
     if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
         await back_to_menu(message, state)
         return
@@ -170,21 +170,27 @@ async def process_confirmation(message: Message, state: FSMContext):
         data = await state.get_data()
         
         # Сохраняем встречу в базу данных
-        # await db.add_meet(
-        #     user_id=message.from_user.id,
-        #     title=data['title'],
-        #     date=data['date'],
-        #     description=data['description'],
-        #     plan=data['plan'],
-        #     password=data['password']
-        # )
-        
-        await message.answer(
-            f"🎉 Встреча <b>«{data['title']}»</b> создана успешно!\n\n"
-            "✅ Все данные сохранены!",
-            parse_mode="HTML",
-            reply_markup=get_main_keyboard()  # Возвращаем основную клавиатуру
+        meet_id = await db.add_meet(
+            user_id=message.from_user.id,
+            title=data['title'],
+            date=data['date'],
+            description=data['description'],
+            plan=data['plan'],
+            password=data.get('password')
         )
+        
+        if meet_id:
+            await message.answer(
+                f"🎉 Встреча <b>«{data['title']}»</b> создана успешно!\n\n"
+                "✅ Все данные сохранены в базе!",
+                parse_mode="HTML",
+                reply_markup=get_main_keyboard()
+            )
+        else:
+            await message.answer(
+                "❌ Произошла ошибка при сохранении встречи. Попробуйте позже.",
+                reply_markup=get_main_keyboard()
+            )
         
         await state.clear()
         
@@ -206,18 +212,6 @@ async def back_to_menu(message: Message, state: FSMContext):
     await state.clear()
     await message.answer(
         "🏠 Главное меню:",
-        reply_markup=get_main_keyboard()
-    )
-
-@router.message(Command("my_meets"))
-@router.message(lambda message: message.text == "📋 Мои встречи")
-async def cmd_my_meets(message: Message):
-    # Здесь будет логика получения встреч из базы данных
-    # meets = await db.get_user_meets(message.from_user.id)
-    
-    await message.answer(
-        "📋 Ваши встречи:\n\n"
-        "Здесь будет список ваших встреч...",
         reply_markup=get_main_keyboard()
     )
 
