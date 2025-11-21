@@ -1,6 +1,8 @@
 # важно не пропустить на гит:
 conf.json
 meetsburg.db
+meetsburg.db-shm
+meetsburg.db-wal
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

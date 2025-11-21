@@ -8,6 +8,9 @@ from keyboards import get_main_keyboard, get_password_choice_keyboard, get_confi
 from database import db
 from datetime import datetime, timedelta
 import re
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = Router()
 
@@ -62,7 +65,8 @@ def calculate_schedule(rooms_count, room_duration, start_time_str, date_str):
             current_time = end_time
         
         return schedule
-    except Exception:
+    except Exception as e:
+        logger.error(f"Ошибка расчета расписания: {e}")
         return []
 
 @router.message(Command("newmeet"))
@@ -361,54 +365,56 @@ async def process_confirmation(message: Message, state: FSMContext):
     if message.text == "✅ Да, всё верно":
         data = await state.get_data()
         
-        meet_id = await db.add_meet(
+        schedule = calculate_schedule(
+            data['rooms_count'], 
+            data['room_duration'], 
+            data['start_time'], 
+            data['date']
+        )
+        
+        if not schedule:
+            await message.answer(
+                "❌ Ошибка при расчете расписания. Проверьте введенные данные.",
+                reply_markup=get_main_keyboard()
+            )
+            await state.clear()
+            return
+        
+        meet_id, success = await db.add_meet_with_rooms(
             user_id=message.from_user.id,
             title=data['title'],
             date=data['date'],
             description=data['description'],
             start_time=data['start_time'],
+            rooms_data=schedule,
+            max_participants=data['max_participants'],
             password=data.get('password')
         )
         
-        if meet_id:
-            schedule = calculate_schedule(
-                data['rooms_count'], 
-                data['room_duration'], 
-                data['start_time'], 
-                data['date']
+        if meet_id and success:
+            total_minutes = data['rooms_count'] * data['room_duration']
+            hours = total_minutes // 60
+            minutes = total_minutes % 60
+            time_display = f"{hours} ч {minutes} мин" if hours > 0 else f"{minutes} мин"
+            
+            access_info = ""
+            if data.get('password'):
+                access_info = f"\n🔐 <b>Пароль для доступа:</b> {data['password']}"
+            
+            await message.answer(
+                f"🎉 Встреча <b>«{data['title']}»</b> создана успешно!\n\n"
+                f"🆔 <b>ID встречи:</b> {meet_id}\n"
+                f"📅 <b>Дата:</b> {data['date']}\n"
+                f"⏰ <b>Начало:</b> {data['start_time']}\n"
+                f"🏠 <b>Комнаты:</b> {data['rooms_count']} × {data['room_duration']} мин\n"
+                f"👥 <b>Участников в комнате:</b> до {data['max_participants']} чел.\n"
+                f"⏱️ <b>Общее время:</b> {time_display}\n"
+                f"{access_info}\n\n"
+                "✅ Все данные сохранены в базе!\n\n"
+                "📋 Участники могут записаться в комнаты с помощью ID встречи.",
+                parse_mode="HTML",
+                reply_markup=get_main_keyboard()
             )
-            
-            rooms_added = await db.add_rooms(meet_id, schedule, data['max_participants'])
-            
-            if rooms_added:
-                total_minutes = data['rooms_count'] * data['room_duration']
-                hours = total_minutes // 60
-                minutes = total_minutes % 60
-                time_display = f"{hours} ч {minutes} мин" if hours > 0 else f"{minutes} мин"
-                
-                access_info = ""
-                if data.get('password'):
-                    access_info = f"\n🔐 <b>Пароль для доступа:</b> {data['password']}"
-                
-                await message.answer(
-                    f"🎉 Встреча <b>«{data['title']}»</b> создана успешно!\n\n"
-                    f"🆔 <b>ID встречи:</b> {meet_id}\n"
-                    f"📅 <b>Дата:</b> {data['date']}\n"
-                    f"⏰ <b>Начало:</b> {data['start_time']}\n"
-                    f"🏠 <b>Комнаты:</b> {data['rooms_count']} × {data['room_duration']} мин\n"
-                    f"👥 <b>Участников в комнате:</b> до {data['max_participants']} чел.\n"
-                    f"⏱️ <b>Общее время:</b> {time_display}\n"
-                    f"{access_info}\n\n"
-                    "✅ Все данные сохранены в базе!\n\n"
-                    "📋 Участники могут записаться в комнаты с помощью ID встречи.",
-                    parse_mode="HTML",
-                    reply_markup=get_main_keyboard()
-                )
-            else:
-                await message.answer(
-                    "❌ Произошла ошибка при создании комнат. Попробуйте позже.",
-                    reply_markup=get_main_keyboard()
-                )
         else:
             await message.answer(
                 "❌ Произошла ошибка при сохранении встречи. Попробуйте позже.",
@@ -431,7 +437,6 @@ async def process_confirmation(message: Message, state: FSMContext):
         )
 
 async def cancel_creation(message: Message, state: FSMContext):
-    """Отмена создания встречи"""
     await state.clear()
     await message.answer(
         "❌ Создание встречи отменено.\n\n"
