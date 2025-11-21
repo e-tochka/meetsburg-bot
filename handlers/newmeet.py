@@ -23,6 +23,13 @@ class CreateMeet(StatesGroup):
     waiting_for_password_input = State()
     waiting_for_confirmation = State()
 
+def get_cancel_keyboard():
+    """Клавиатура с кнопкой отмены"""
+    return ReplyKeyboardMarkup(
+        keyboard=[[KeyboardButton(text="❌ Отмена")]],
+        resize_keyboard=True
+    )
+
 def is_valid_date(date_string):
     try:
         date = datetime.strptime(date_string, '%d-%m-%Y')
@@ -65,14 +72,14 @@ async def cmd_newmeet(message: Message, state: FSMContext):
     await message.answer(
         "🗓️ Создание новой встречи...\n\n"
         "📝 Введите название встречи:",
-        reply_markup=None
+        reply_markup=get_cancel_keyboard()
     )
     await state.set_state(CreateMeet.waiting_for_title)
 
 @router.message(CreateMeet.waiting_for_title)
 async def process_meet_title(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
         
     await state.update_data(title=message.text)
@@ -81,19 +88,20 @@ async def process_meet_title(message: Message, state: FSMContext):
         f"✅ Название сохранено: <b>{message.text}</b>\n\n"
         "📅 Теперь введите дату встречи в формате DD-MM-YYYY:\n"
         "<i>Например: 25-12-2024</i>",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=get_cancel_keyboard()
     )
     await state.set_state(CreateMeet.waiting_for_date)
 
 @router.message(CreateMeet.waiting_for_date)
 async def process_meet_date(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
     
     is_valid, result = is_valid_date(message.text)
     if not is_valid:
-        await message.answer(result + "\n\nВведите дату снова:")
+        await message.answer(result + "\n\nВведите дату снова:", reply_markup=get_cancel_keyboard())
         return
         
     await state.update_data(date=message.text)
@@ -102,19 +110,20 @@ async def process_meet_date(message: Message, state: FSMContext):
         f"✅ Дата сохранена: <b>{message.text}</b>\n\n"
         "⏰ Теперь введите время старта первой комнаты в формате HH:MM:\n"
         "<i>Например: 14:30</i>",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=get_cancel_keyboard()
     )
     await state.set_state(CreateMeet.waiting_for_start_time)
 
 @router.message(CreateMeet.waiting_for_start_time)
 async def process_start_time(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
     
     is_valid, result = is_valid_time(message.text)
     if not is_valid:
-        await message.answer(result + "\n\nВведите время снова:")
+        await message.answer(result + "\n\nВведите время снова:", reply_markup=get_cancel_keyboard())
         return
         
     await state.update_data(start_time=message.text)
@@ -122,14 +131,15 @@ async def process_start_time(message: Message, state: FSMContext):
     await message.answer(
         f"✅ Время старта сохранено: <b>{message.text}</b>\n\n"
         "📋 Теперь введите описание встречи:",
-        parse_mode="HTML"
+        parse_mode="HTML",
+        reply_markup=get_cancel_keyboard()
     )
     await state.set_state(CreateMeet.waiting_for_description)
 
 @router.message(CreateMeet.waiting_for_description)
 async def process_meet_description(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
         
     await state.update_data(description=message.text)
@@ -143,25 +153,25 @@ async def process_meet_description(message: Message, state: FSMContext):
         "🏠 Введите количество комнат:"
     )
     
-    await message.answer(rules_text, parse_mode="HTML")
+    await message.answer(rules_text, parse_mode="HTML", reply_markup=get_cancel_keyboard())
     await state.set_state(CreateMeet.waiting_for_rooms_count)
 
 @router.message(CreateMeet.waiting_for_rooms_count)
 async def process_rooms_count(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
     
     try:
         rooms_count = int(message.text.strip())
         
         if rooms_count <= 0:
-            await message.answer("❌ Количество комнат должно быть положительным числом. Введите снова:")
+            await message.answer("❌ Количество комнат должно быть положительным числом. Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         max_rooms = 60  
         if rooms_count > max_rooms:
-            await message.answer(f"❌ Слишком много комнат. Максимум {max_rooms} комнат. Введите снова:")
+            await message.answer(f"❌ Слишком много комнат. Максимум {max_rooms} комнат. Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         await state.update_data(rooms_count=rooms_count)
@@ -169,28 +179,29 @@ async def process_rooms_count(message: Message, state: FSMContext):
         await message.answer(
             f"✅ Количество комнат: <b>{rooms_count}</b>\n\n"
             "⏱️ Теперь введите продолжительность одной комнаты в минутах:",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=get_cancel_keyboard()
         )
         await state.set_state(CreateMeet.waiting_for_room_duration)
         
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите число (например: 3):")
+        await message.answer("❌ Пожалуйста, введите число (например: 3):", reply_markup=get_cancel_keyboard())
 
 @router.message(CreateMeet.waiting_for_room_duration)
 async def process_room_duration(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
     
     try:
         room_duration = int(message.text.strip())
         
         if room_duration < 10:
-            await message.answer("❌ Продолжительность комнаты должна быть не менее 10 минут. Введите снова:")
+            await message.answer("❌ Продолжительность комнаты должна быть не менее 10 минут. Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         if room_duration > 600: 
-            await message.answer("❌ Продолжительность комнаты не может превышать 10 часов (600 минут). Введите снова:")
+            await message.answer("❌ Продолжительность комнаты не может превышать 10 часов (600 минут). Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         data = await state.get_data()
@@ -203,7 +214,8 @@ async def process_room_duration(message: Message, state: FSMContext):
                 f"❌ Суммарное время встречи превышает 10 часов.\n"
                 f"При продолжительности {room_duration} минут одной комнаты "
                 f"максимум можно создать {max_rooms_for_duration} комнат.\n\n"
-                "Введите меньшую продолжительность или уменьшите количество комнат:"
+                "Введите меньшую продолжительность или уменьшите количество комнат:",
+                reply_markup=get_cancel_keyboard()
             )
             return
         
@@ -218,28 +230,29 @@ async def process_room_duration(message: Message, state: FSMContext):
             f"📊 Всего: {rooms_count} комнат × {room_duration} мин = {time_display}\n\n"
             "👥 Теперь введите максимальное количество участников в одной комнате:\n"
             "<i>Например: 1 (для индивидуальных встреч)</i>",
-            parse_mode="HTML"
+            parse_mode="HTML",
+            reply_markup=get_cancel_keyboard()
         )
         await state.set_state(CreateMeet.waiting_for_max_participants)
         
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите число минут (например: 15):")
+        await message.answer("❌ Пожалуйста, введите число минут (например: 15):", reply_markup=get_cancel_keyboard())
 
 @router.message(CreateMeet.waiting_for_max_participants)
 async def process_max_participants(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
     
     try:
         max_participants = int(message.text.strip())
         
         if max_participants < 1:
-            await message.answer("❌ Количество участников должно быть не менее 1. Введите снова:")
+            await message.answer("❌ Количество участников должно быть не менее 1. Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         if max_participants > 50:
-            await message.answer("❌ Слишком много участников. Максимум 50 на комнату. Введите снова:")
+            await message.answer("❌ Слишком много участников. Максимум 50 на комнату. Введите снова:", reply_markup=get_cancel_keyboard())
             return
         
         await state.update_data(max_participants=max_participants)
@@ -253,12 +266,12 @@ async def process_max_participants(message: Message, state: FSMContext):
         await state.set_state(CreateMeet.waiting_for_password_choice)
         
     except ValueError:
-        await message.answer("❌ Пожалуйста, введите число (например: 1):")
+        await message.answer("❌ Пожалуйста, введите число (например: 1):", reply_markup=get_cancel_keyboard())
 
 @router.message(CreateMeet.waiting_for_password_choice)
 async def process_password_choice(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
         
     if message.text == "🔓 Без пароля":
@@ -269,7 +282,9 @@ async def process_password_choice(message: Message, state: FSMContext):
         await message.answer(
             "🔐 Введите пароль для встречи:",
             reply_markup=ReplyKeyboardMarkup(
-                keyboard=[[KeyboardButton(text="↩️ Назад к меню")]],
+                keyboard=[
+                    [KeyboardButton(text="❌ Отмена")]
+                ],
                 resize_keyboard=True
             )
         )
@@ -282,14 +297,15 @@ async def process_password_choice(message: Message, state: FSMContext):
 
 @router.message(CreateMeet.waiting_for_password_input)
 async def process_password_input(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
         
     password = message.text.strip()
     if not password:
         await message.answer(
-            "❌ Пароль не может быть пустым. Введите пароль:"
+            "❌ Пароль не может быть пустым. Введите пароль:",
+            reply_markup=get_cancel_keyboard()
         )
         return
     
@@ -338,8 +354,8 @@ async def show_confirmation(message: Message, state: FSMContext):
 
 @router.message(CreateMeet.waiting_for_confirmation)
 async def process_confirmation(message: Message, state: FSMContext):
-    if message.text in ["↩️ Назад к меню", "🏠 Главное меню"]:
-        await back_to_menu(message, state)
+    if message.text in ["↩️ Назад к меню", "🏠 Главное меню", "❌ Отмена"]:
+        await cancel_creation(message, state)
         return
         
     if message.text == "✅ Да, всё верно":
@@ -405,7 +421,7 @@ async def process_confirmation(message: Message, state: FSMContext):
         await message.answer(
             "❌ Давайте начнем создание встречи заново.\n\n"
             "📝 Введите название встречи:",
-            reply_markup=None
+            reply_markup=get_cancel_keyboard()
         )
         await state.set_state(CreateMeet.waiting_for_title)
     else:
@@ -413,6 +429,15 @@ async def process_confirmation(message: Message, state: FSMContext):
             "Пожалуйста, выберите вариант с клавиатуры:",
             reply_markup=get_confirmation_keyboard()
         )
+
+async def cancel_creation(message: Message, state: FSMContext):
+    """Отмена создания встречи"""
+    await state.clear()
+    await message.answer(
+        "❌ Создание встречи отменено.\n\n"
+        "🏠 Возврат в главное меню:",
+        reply_markup=get_main_keyboard()
+    )
 
 async def back_to_menu(message: Message, state: FSMContext):
     await state.clear()
@@ -424,3 +449,7 @@ async def back_to_menu(message: Message, state: FSMContext):
 @router.message(lambda message: message.text == "↩️ Назад к меню")
 async def back_to_menu_handler(message: Message, state: FSMContext):
     await back_to_menu(message, state)
+
+@router.message(lambda message: message.text == "❌ Отмена")
+async def cancel_handler(message: Message, state: FSMContext):
+    await cancel_creation(message, state)
