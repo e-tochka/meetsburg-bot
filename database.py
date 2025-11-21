@@ -2,7 +2,6 @@ import sqlite3
 import logging
 import time
 from datetime import datetime
-import os
 
 logger = logging.getLogger(__name__)
 
@@ -68,6 +67,16 @@ class Database:
                     FOREIGN KEY (room_id) REFERENCES rooms (id) ON DELETE CASCADE
                 )
             ''')
+
+            cursor.execute('''
+                CREATE TABLE IF NOT EXISTS sent_notifications (
+                    id INTEGER PRIMARY KEY AUTOINCREMENT,
+                    meet_id INTEGER NOT NULL,
+                    notification_type TEXT NOT NULL, -- '30min' или 'tomorrow'
+                    sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+                    UNIQUE(meet_id, notification_type)
+                )
+            ''')
             
             conn.commit()
             conn.close()
@@ -78,7 +87,6 @@ class Database:
 
     async def add_meet_with_rooms(self, user_id: int, title: str, date: str, description: str, 
                                  start_time: str, rooms_data: list, max_participants: int = 1, password: str = None):
-        """Атомарная операция: создание встречи и комнат в одной транзакции"""
         try:
             conn = self.get_connection_with_retry()
             cursor = conn.cursor()
@@ -338,6 +346,99 @@ class Database:
             logger.error(f"Ошибка проверки активности встречи: {e}")
             return False
 
+    async def get_meets_by_date(self, date: str):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id, title, date, description, start_time, password, user_id
+                FROM meets 
+                WHERE date = ? AND is_active = TRUE
+            ''', (date,))
+            
+            meets = cursor.fetchall()
+            conn.close()
+            return meets
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения встреч по дате: {e}")
+            return []
 
+    async def get_room_participant_ids(self, room_id: int):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT user_id FROM room_participants 
+                WHERE room_id = ?
+            ''', (room_id,))
+            
+            participants = cursor.fetchall()
+            conn.close()
+            return [participant[0] for participant in participants]
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения ID участников комнаты: {e}")
+            return []
+
+    async def get_upcoming_meets(self, target_datetime: str):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            date_part = target_datetime.split(' ')[0]
+            time_part = target_datetime.split(' ')[1]
+            
+            cursor.execute('''
+                SELECT id, title, date, description, start_time, password, user_id
+                FROM meets 
+                WHERE date = ? AND start_time = ? AND is_active = TRUE
+            ''', (date_part, time_part))
+            
+            meets = cursor.fetchall()
+            conn.close()
+            return meets
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения предстоящих встреч: {e}")
+            return []
+
+    async def is_notification_sent(self, meet_id: int, notification_type: str):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT id FROM sent_notifications 
+                WHERE meet_id = ? AND notification_type = ?
+            ''', (meet_id, notification_type))
+            
+            result = cursor.fetchone()
+            conn.close()
+            return result is not None
+            
+        except Exception as e:
+            logger.error(f"Ошибка проверки отправленного уведомления: {e}")
+            return False
+
+    async def mark_notification_sent(self, meet_id: int, notification_type: str):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                INSERT OR REPLACE INTO sent_notifications (meet_id, notification_type)
+                VALUES (?, ?)
+            ''', (meet_id, notification_type))
+            
+            conn.commit()
+            conn.close()
+            return True
+            
+        except Exception as e:
+            logger.error(f"Ошибка отметки отправленного уведомления: {e}")
+            return False
 
 db = Database()

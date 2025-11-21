@@ -3,11 +3,10 @@ from aiogram.types import Message
 from aiogram.filters import Command
 from aiogram.fsm.context import FSMContext
 from aiogram.fsm.state import State, StatesGroup
-from aiogram.types import Message, ReplyKeyboardMarkup, KeyboardButton
+from aiogram.types import Message
 from keyboards import get_main_keyboard, get_rooms_keyboard, get_cancel_keyboard
 from database import db
 import logging
-import asyncio
 
 logger = logging.getLogger(__name__)
 

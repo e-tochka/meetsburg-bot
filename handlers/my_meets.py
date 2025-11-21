@@ -15,7 +15,6 @@ class MeetDetails(StatesGroup):
     waiting_for_meet_choice = State()
 
 def get_meets_keyboard(meets):
-    """Клавиатура для выбора встречи"""
     keyboard = []
     for meet in meets:
         meet_id, title, date, description, start_time, password, created_at = meet
@@ -40,7 +39,6 @@ async def cmd_my_meets(message: Message, state: FSMContext):
             )
             return
         
-        # Сохраняем встречи в состоянии
         await state.update_data(meets=meets)
         
         meets_text = "📋 <b>Ваши встречи:</b>\n\n"
@@ -97,7 +95,6 @@ async def process_meet_choice(message: Message, state: FSMContext):
         
         meet_id, title, date, description, start_time, password, created_at = selected_meet
         
-        # Получаем детальную информацию о встрече
         rooms = await db.get_meet_rooms(meet_id)
         
         if not rooms:
@@ -144,7 +141,6 @@ async def process_meet_choice(message: Message, state: FSMContext):
         
         await message.answer(meet_detail, parse_mode="HTML")
         
-        # Предлагаем посмотреть другую встречу
         await message.answer(
             "Выберите другую встречу или вернитесь в меню:",
             reply_markup=get_meets_keyboard(meets)
