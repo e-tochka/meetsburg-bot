@@ -2,6 +2,7 @@ import sqlite3
 import logging
 import time
 from datetime import datetime
+from datetime import timedelta
 
 logger = logging.getLogger(__name__)
 
@@ -71,10 +72,10 @@ class Database:
             cursor.execute('''
                 CREATE TABLE IF NOT EXISTS sent_notifications (
                     id INTEGER PRIMARY KEY AUTOINCREMENT,
-                    meet_id INTEGER NOT NULL,
+                    room_id INTEGER NOT NULL,
                     notification_type TEXT NOT NULL, -- '30min' или 'tomorrow'
                     sent_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
-                    UNIQUE(meet_id, notification_type)
+                    UNIQUE(room_id, notification_type)
                 )
             ''')
             
@@ -405,15 +406,15 @@ class Database:
             logger.error(f"Ошибка получения предстоящих встреч: {e}")
             return []
 
-    async def is_notification_sent(self, meet_id: int, notification_type: str):
+    async def is_notification_sent(self, room_id: int, notification_type: str):
         try:
             conn = self.get_connection_with_retry()
             cursor = conn.cursor()
             
             cursor.execute('''
                 SELECT id FROM sent_notifications 
-                WHERE meet_id = ? AND notification_type = ?
-            ''', (meet_id, notification_type))
+                WHERE room_id = ? AND notification_type = ?
+            ''', (room_id, notification_type))
             
             result = cursor.fetchone()
             conn.close()
@@ -423,15 +424,15 @@ class Database:
             logger.error(f"Ошибка проверки отправленного уведомления: {e}")
             return False
 
-    async def mark_notification_sent(self, meet_id: int, notification_type: str):
+    async def mark_notification_sent(self, room_id: int, notification_type: str):
         try:
             conn = self.get_connection_with_retry()
             cursor = conn.cursor()
             
             cursor.execute('''
-                INSERT OR REPLACE INTO sent_notifications (meet_id, notification_type)
+                INSERT OR REPLACE INTO sent_notifications (room_id, notification_type)
                 VALUES (?, ?)
-            ''', (meet_id, notification_type))
+            ''', (room_id, notification_type))
             
             conn.commit()
             conn.close()
@@ -440,5 +441,129 @@ class Database:
         except Exception as e:
             logger.error(f"Ошибка отметки отправленного уведомления: {e}")
             return False
+        
+    async def cleanup_old_notifications(self):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                DELETE FROM sent_notifications 
+                WHERE room_id IN (
+                    SELECT r.id FROM rooms r
+                    JOIN meets m ON r.meet_id = m.id
+                    WHERE date(m.date || ' ' || r.start_time, '+1 day') < datetime('now')
+                    OR m.is_active = FALSE
+                    OR r.is_active = FALSE
+                )
+            ''')
+            
+            conn.commit()
+            deleted_count = cursor.rowcount
+            conn.close()
+            
+            if deleted_count > 0:
+                logger.info(f"Очищено {deleted_count} старых уведомлений")
+                
+        except Exception as e:
+            logger.error(f"Ошибка очистки старых уведомлений: {e}")
+
+    async def get_tomorrow_rooms(self):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            tomorrow_date = (datetime.now() + timedelta(days=1)).strftime('%d-%m-%Y')
+            
+            cursor.execute('''
+                SELECT r.id, r.room_number, r.start_time, r.end_time,
+                    m.id, m.title, m.date, m.description, m.user_id
+                FROM rooms r
+                JOIN meets m ON r.meet_id = m.id
+                WHERE m.date = ? AND m.is_active = TRUE AND r.is_active = TRUE
+            ''', (tomorrow_date,))
+            
+            rooms = cursor.fetchall()
+            conn.close()
+            return rooms
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения комнат на завтра: {e}")
+            return []
+
+    async def get_upcoming_rooms(self, minutes: int = 30):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            now = datetime.now()
+            today_date = now.strftime('%d-%m-%Y')
+            tomorrow_date = (now + timedelta(days=1)).strftime('%d-%m-%Y')
+            
+            cursor.execute('''
+                SELECT r.id, r.room_number, r.start_time, r.end_time,
+                    m.id, m.title, m.date, m.description, m.user_id
+                FROM rooms r
+                JOIN meets m ON r.meet_id = m.id
+                WHERE m.date IN (?, ?) AND m.is_active = TRUE AND r.is_active = TRUE
+            ''', (today_date, tomorrow_date))
+            
+            all_rooms = cursor.fetchall()
+            conn.close()
+            
+            upcoming_rooms = []
+            for room in all_rooms:
+                room_id, room_number, start_time, end_time, meet_id, title, date, description, user_id = room
+                
+                try:
+                    room_datetime = datetime.strptime(f"{date} {start_time}", '%d-%m-%Y %H:%M')
+                    time_diff = (room_datetime - now).total_seconds() / 60
+                    
+                    if 0 <= time_diff <= minutes:
+                        upcoming_rooms.append(room)
+                        
+                except ValueError as e:
+                    logger.error(f"Ошибка парсинга даты комнаты {room_id}: {e}")
+                    continue
+                    
+            return upcoming_rooms
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения предстоящих комнат: {e}")
+            return []
+
+    async def get_room_participants_with_creator(self, room_id: int):
+        try:
+            conn = self.get_connection_with_retry()
+            cursor = conn.cursor()
+            
+            cursor.execute('''
+                SELECT rp.user_id 
+                FROM room_participants rp
+                WHERE rp.room_id = ?
+            ''', (room_id,))
+            
+            participants = [row[0] for row in cursor.fetchall()]
+            
+            cursor.execute('''
+                SELECT m.user_id 
+                FROM meets m
+                JOIN rooms r ON m.id = r.meet_id
+                WHERE r.id = ?
+            ''', (room_id,))
+            
+            creator_result = cursor.fetchone()
+            creator_id = creator_result[0] if creator_result else None
+            
+            all_recipients = set(participants)
+            if creator_id:
+                all_recipients.add(creator_id)
+                
+            conn.close()
+            return list(all_recipients)
+            
+        except Exception as e:
+            logger.error(f"Ошибка получения участников комнаты {room_id}: {e}")
+            return []
 
 db = Database()
